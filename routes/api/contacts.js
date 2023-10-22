@@ -1,6 +1,4 @@
 const express = require("express");
-const Joi = require("joi");
-
 const router = express.Router();
 
 const {
@@ -9,34 +7,16 @@ const {
   removeContact,
   addContact,
   updateContact,
+  updateStatus,
 } = require("../../models/contacts");
-
-const schema = Joi.object({
-  name: Joi.string().min(3).max(30).required().messages({
-    "string.min": "Name should have a minimum length of 3",
-    "string.max": "Name should have a maximum length of 30",
-    "any.required": "Missing field",
-  }),
-  email: Joi.string()
-    .email({ minDomainSegments: 2, tlds: { allow: ["com", "net", "ro"] } })
-    .required()
-    .messages({
-      "string.email": "Email should be a valid address with a domain and allowed top-level domains (com, net, ro)",
-      "any.required": "Missing field",
-    }),
-  phone: Joi.string().min(10).required().messages({
-    "string.min": "Phone number should have a minimum length of 10",
-    "any.required": "Missing field",
-  }),
-});
 
 router.get("/", async (req, res, next) => {
   try {
-    const contacts = await listContacts();
+    const result = await listContacts();
     res.status(200).json({
       status: "success",
       code: 200,
-      data: contacts,
+      data: result,
     });
   } catch (error) {
     next(error);
@@ -67,22 +47,23 @@ router.get("/:contactId", async (req, res, next) => {
 
 router.post("/", async (req, res, next) => {
   try {
-    const { name, email, phone } = req.body;
-    const { error } = schema.validate({ name, email, phone });
-
-    if (error) {
+    const body = req.body;
+    if (!body.name || !body.email || !body.phone || !body.favorite) {
       return res.status(400).json({
         status: "error",
         code: 400,
-        message: error.details[0].message,
+        message: "Missing required field",
       });
     }
+    const newContact = await addContact(body);
 
-    const aContact = await addContact(req.body);
     res.status(201).json({
-      status: "success",
+      id: newContact._id,
+      name: newContact.name,
+      email: newContact.email,
+      phone: newContact.phone,
+      favorite: newContact.favorite,
       code: 201,
-      data: aContact,
     });
   } catch (error) {
     next(error);
@@ -115,18 +96,9 @@ router.delete("/:contactId", async (req, res, next) => {
 router.put("/:contactId", async (req, res, next) => {
   try {
     const { contactId } = req.params;
-    const { name, email, phone } = req.body;
-    const { error } = schema.validate({ name, email, phone });
+    const body = req.body;
 
-    if (error) {
-      return res.status(400).json({
-        status: "error",
-        code: 400,
-        message: error.details[0].message,
-      });
-    }
-
-    const uContact = await updateContact(contactId, req.body);
+    const uContact = await updateContact(contactId, body);
 
     if (uContact) {
       res.status(200).json({
@@ -141,6 +113,25 @@ router.put("/:contactId", async (req, res, next) => {
         code: 404,
         message: "Not found",
       });
+    }
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.patch("/:contactId/favorite", async (req, res, next) => {
+  try {
+    const { contactId } = req.params;
+    const body = req.body;
+
+    if (!body || typeof body.favorite !== "boolean") {
+      return res.status(400).json({
+        message: "Favorite field must be a boolean",
+        status: 400,
+      });
+    } else {
+      const updatedContact = await updateStatus(contactId, body.favorite);
+      res.status(200).json(updatedContact);
     }
   } catch (error) {
     next(error);
