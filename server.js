@@ -1,13 +1,7 @@
-//const express = require("express");
-//const cors = require("cors");
-const mongoose = require("mongoose");
-mongoose.Promise = global.Promise;
-require("dotenv").config();
-
 const app = require("./app");
-
-//app.use(express.json());
-//app.use(cors());
+const mongoose = require("mongoose");
+require("dotenv").config();
+mongoose.Promise = global.Promise;
 
 const PORT = process.env.PORT || 5000;
 const mongoDB = process.env.MONGO_URL;
@@ -23,4 +17,4 @@ app.listen(PORT, () => {
       console.error(`Server not running. Error:`, err);
       process.exit(1);
     });
-}); 
+});
