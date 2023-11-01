@@ -4,18 +4,51 @@ const jwt = require("jsonwebtoken");
 const passport = require("passport");
 const User = require("../../models/schemas/user");
 require("dotenv").config();
-const secret = process.env.SECRET;
+const secret = process.env.SECRET; 
 
-router.get("/", (req, res) => {
-  res.status(200).json({
-    status: "success",
-    message: "Welcome to the Users API!",
-  });
+var Jimp = require("jimp");
+const path = require("path");
+const fs = require("fs");
+const multer = require("multer");
+const gravatar = require("gravatar");
+
+const uploadDir = path.join(process.cwd(), "tmp");
+const storeImage = path.join(process.cwd(), "public", "avatars");
+
+const auth = (req, res, next) => {
+  passport.authenticate("jwt", { session: false }, (err, user) => {
+    if (!user || err) {
+      return res.status(401).json({
+        status: "Error",
+        code: 401,
+        message: "Not authorized",
+        data: "Not authorized",
+      });
+    }
+    req.user = user;
+    next();
+  })(req, res, next);
+};
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    cb(null, file.originalname.toLowerCase().split(" ").join("-"));
+  },
+  limits: {
+    fileSize: 1048576,
+  },
+});
+
+const upload = multer({
+  storage: storage,
 });
 
 //registration
 router.post("/signup", async (req, res, next) => {
-  const { email, password } = req.body; 
+  const { email, password } = req.body;
   const user = await User.findOne({ email });
   if (user) {
     return res.status(409).json({
@@ -26,8 +59,10 @@ router.post("/signup", async (req, res, next) => {
     });
   }
   try {
-    const newUser = new User({ email, password });
+    const avatarURL = "https:" + gravatar.url(email, { s: "200", r: "pg", d: "identicon" });
+    const newUser = new User({ email, password, avatarURL });
     const validationError = newUser.validateSync();
+
     if (validationError) {
       return res.status(400).json({
         status: "error",
@@ -38,9 +73,7 @@ router.post("/signup", async (req, res, next) => {
     }
 
     newUser.setPass(password);
-
     await newUser.save();
-
     res.status(201).json({
       status: "Success",
       code: 201,
@@ -48,6 +81,7 @@ router.post("/signup", async (req, res, next) => {
         message: "Registration successful",
         email: newUser.email,
         subscription: newUser.subscription,
+        avatarURL: newUser.avatarURL,
       },
     });
   } catch (error) {
@@ -100,21 +134,6 @@ router.post("/login", async (req, res, next) => {
   }
 });
 
-const auth = (req, res, next) => {
-  passport.authenticate("jwt", { session: false }, (err, user) => {
-    if (!user || err) {
-      return res.status(401).json({
-        status: "Error",
-        code: 401,
-        message: "Not authorized",
-        data: "Not authorized",
-      });
-    }
-    req.user = user;
-    next();
-  })(req, res, next);
-};
-
 router.get("/contacts", auth, (req, res, next) => {
   const { email } = req.user;
   res.json({
@@ -129,15 +148,15 @@ router.get("/contacts", auth, (req, res, next) => {
 //logout
 router.get("/logout", auth, async (req, res, next) => {
   try {
-    const user = req.user; 
+    const user = req.user;
 
     if (!user) {
       return res.status(401).json({
         message: "Not authorized",
       });
-    } 
+    }
     user.setToken(null);
-    await user.save(); 
+    await user.save();
     res.status(204).send();
   } catch (error) {
     next(error);
@@ -163,4 +182,36 @@ router.get("/current", auth, async (req, res) => {
   }
 });
 
+//avatars
+router.patch("/avatars", auth, upload.single("avatar"), async (req, res, next) => {
+    try {
+      const user = req.user;
+      const email = req.user.email;
+      //const { path: temporaryName, originalname } = req.file; 
+      //const fileName = path.join(storeImage, originalname); 
+
+      if (!user) {
+        return res.status(401).json({
+          message: "Not authorized",
+        });
+      }
+
+      const image = await Jimp.read(req.file.path);
+      image.resize(250, 250);
+
+      const uniqueImgName = email.split("@")[0] + "_avatar" + path.extname(req.file.originalname);
+      const avatarPath = path.join(storeImage, uniqueImgName);
+      await image.writeAsync(avatarPath); 
+      const avatarURL = `/avatars/${uniqueImgName}`;
+      req.user.avatarURL = avatarURL;
+      await user.save();
+      res.status(200).json({
+        avatarURL: user.avatarURL,
+      });
+    } catch (error) {
+      fs.unlinkSync(req.file.path);
+      next(error);
+    }
+  }
+);
 module.exports = router;
