@@ -33,7 +33,15 @@ const user = new Schema({
   owner: {
     type: Schema.Types.ObjectId,
     ref: "user",
-  },
+  }, 
+    verify: {
+      type: Boolean,
+      default: false,
+    },
+    verificationToken: {
+      type: String,
+      //required: [true, 'Verify token is required'],
+    }, 
 });
 
 user.methods.setPass = function (password) {
